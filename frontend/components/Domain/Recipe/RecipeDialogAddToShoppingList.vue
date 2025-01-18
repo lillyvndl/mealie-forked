@@ -220,6 +220,10 @@ export default defineComponent({
       shoppingListShowAllToggled: false,
     });
 
+    const userHousehold = computed(() => {
+      return $auth.user?.householdSlug || "";
+    });
+
     const shoppingListChoices = computed(() => {
       return props.shoppingLists.filter((list) => preferences.value.viewAllLists || list.userId === $auth.user?.id);
     });
@@ -263,32 +267,32 @@ export default defineComponent({
           continue;
         }
 
-        const shoppingListIngredients: ShoppingListIngredient[] = [];
+        const shoppingListIngredients: ShoppingListIngredient[] = recipe.recipeIngredient.map((ing) => {
+          if (ing.isRecipe && ing.referencedRecipe) {
+            // If ing is a recipe, add all its ingredients
+            ing.referencedRecipe.recipeIngredient?.forEach((subIng) => {
+              const calculatedQty = (ing.quantity || 1) * (subIng.quantity || 1);
+              shoppingListIngredients.push({
+                checked: !subIng.food?.onHand,
+                ingredient: {
+                    ...subIng,
+                    quantity: calculatedQty,
+                    title: ing.referencedRecipe?.name || "",
+                },
+                disableAmount: recipe.settings?.disableAmount || false,
+              });
+            });
+          } else {
+            // If ing is not a recipe, add it directly
+            const householdsWithFood = (ing.food?.householdsWithIngredientFood || []);
 
-        recipe.recipeIngredient.forEach((ing) => {
-        if (ing.isRecipe && ing.referencedRecipe) {
-          // If ing is a recipe, add all its ingredients
-          ing.referencedRecipe.recipeIngredient?.forEach((subIng) => {
-            const calculatedQty = (ing.quantity || 1) * (subIng.quantity || 1);
             shoppingListIngredients.push({
-              checked: !subIng.food?.onHand,
-              ingredient: {
-            ...subIng,
-            quantity: calculatedQty,
-            title: ing.referencedRecipe?.name || "",
-        },
+              checked: !householdsWithFood.includes(userHousehold.value),
+              ingredient: ing,
               disableAmount: recipe.settings?.disableAmount || false,
             });
-          });
-        } else {
-          // If ing is not a recipe, add it directly
-          shoppingListIngredients.push({
-            checked: !ing.food?.onHand,
-            ingredient: ing,
-            disableAmount: recipe.settings?.disableAmount || false,
-          });
-        }
-      });
+          }
+        });
 
         let currentTitle = "";
         const onHandIngs: ShoppingListIngredient[] = [];
@@ -311,7 +315,8 @@ export default defineComponent({
           }
 
           // Store the on-hand ingredients for later
-          if (ing.ingredient.food?.onHand) {
+          const householdsWithFood = (ing.ingredient.food?.householdsWithIngredientFood || []);
+          if (householdsWithFood.includes(userHousehold.value)) {
             onHandIngs.push(ing);
             return sections;
           }
