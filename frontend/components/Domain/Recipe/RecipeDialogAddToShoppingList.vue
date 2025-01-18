@@ -73,8 +73,24 @@
               v-for="(ingredientSection, ingredientSectionIndex) in recipeSection.ingredientSections"
               :key="recipeSection.recipeId + recipeSectionIndex + ingredientSectionIndex"
             >
-              <v-card-title v-if="ingredientSection.sectionName" class="ingredient-title mt-2 pb-0 text-h6">
-                {{ ingredientSection.sectionName }}
+              <v-card-title v-if="ingredientSection.sectionName" class="ingredient-title mt-2 pb-0 text-h6 d-flex align-center justify-space-between">
+                <span>{{ ingredientSection.sectionName }}</span>
+                  <BaseButtonGroup
+                    :buttons="[
+                      {
+                        icon: $globals.icons.checkboxBlankOutline,
+                        text: $tc('shopping-list.uncheck-all-items'),
+                        event: 'uncheck',
+                      },
+                      {
+                        icon: $globals.icons.checkboxOutline,
+                        text: $tc('shopping-list.check-all-items'),
+                        event: 'check',
+                      },
+                    ]"
+                    @uncheck="bulkCheckIngredients(false, ingredientSection.sectionName)"
+                    @check="bulkCheckIngredients(true, ingredientSection.sectionName)"
+                  />
               </v-card-title>
               <div
                 :class="$vuetify.breakpoint.smAndDown ? '' : 'ingredient-grid'"
@@ -252,11 +268,29 @@ export default defineComponent({
         }
 
         const shoppingListIngredients: ShoppingListIngredient[] = recipe.recipeIngredient.map((ing) => {
-          const householdsWithFood = (ing.food?.householdsWithIngredientFood || []);
-          return {
-            checked: !householdsWithFood.includes(userHousehold.value),
-            ingredient: ing,
-            disableAmount: recipe.settings?.disableAmount || false,
+          if (ing.isRecipe && ing.referencedRecipe) {
+            // If ing is a recipe, add all its ingredients
+            ing.referencedRecipe.recipeIngredient?.forEach((subIng) => {
+              const calculatedQty = (ing.quantity || 1) * (subIng.quantity || 1);
+              shoppingListIngredients.push({
+                checked: !subIng.food?.onHand,
+                ingredient: {
+                    ...subIng,
+                    quantity: calculatedQty,
+                    title: ing.referencedRecipe?.name || "",
+                },
+                disableAmount: recipe.settings?.disableAmount || false,
+              });
+            });
+          } else {
+            // If ing is not a recipe, add it directly
+            const householdsWithFood = (ing.food?.householdsWithIngredientFood || []);
+
+            shoppingListIngredients.push({
+              checked: !householdsWithFood.includes(userHousehold.value),
+              ingredient: ing,
+              disableAmount: recipe.settings?.disableAmount || false,
+            });
           }
         });
 
@@ -331,12 +365,14 @@ export default defineComponent({
       state.shoppingListShowAllToggled = true;
     }
 
-    function bulkCheckIngredients(value = true) {
+    function bulkCheckIngredients(value = true, section?: string) {
       recipeIngredientSections.value.forEach((recipeSection) => {
         recipeSection.ingredientSections.forEach((ingSection) => {
-          ingSection.ingredients.forEach((ing) => {
-            ing.checked = value;
-          });
+          if (!section || ingSection.sectionName === section) {
+            ingSection.ingredients.forEach((ing) => {
+              ing.checked = value;
+            });
+          }
         });
       });
     }

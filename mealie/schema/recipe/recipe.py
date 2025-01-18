@@ -332,7 +332,12 @@ class Recipe(RecipeSummary):
                 .all()
             )
 
-            session.execute(text(f"set pg_trgm.word_similarity_threshold = {cls._fuzzy_similarity_threshold};"))
+            session.execute(
+                text(
+                    f"set pg_trgm.word_similarity_threshold = {
+                        cls._fuzzy_similarity_threshold};"
+                )
+            )
             return query.filter(
                 or_(
                     RecipeModel.name_normalized.op("%>")(search),
