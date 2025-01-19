@@ -16,6 +16,7 @@ export interface OrganizerBase {
   id: string;
   slug: string;
   name: string;
+  fullName: string;
 }
 
 export type FieldType =
@@ -170,13 +171,14 @@ export function useQueryFilterBuilder() {
       type === Organizer.Tag ||
       type === Organizer.Tool ||
       type === Organizer.Food ||
-      type === Organizer.Household
+      type === Organizer.Household ||
+      type === Organizer.User
     );
   };
 
   function getFieldFromFieldDef(field: Field | FieldDefinition, resetValue = false): Field {
     /* eslint-disable dot-notation */
-    const updatedField = {logicalOperator: logOps.value.AND, ...field} as Field;
+    const updatedField = { logicalOperator: logOps.value.AND, ...field } as Field;
     let operatorOptions: FieldRelationalOperator[];
     if (updatedField.fieldOptions?.length || isOrganizerType(updatedField.type)) {
       operatorOptions = [
@@ -209,7 +211,7 @@ export function useQueryFilterBuilder() {
           break;
         case "date":
           operatorOptions = [
-          relOps.value["="],
+            relOps.value["="],
             relOps.value["<>"],
             relOps.value[">"],
             relOps.value[">="],
