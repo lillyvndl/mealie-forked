@@ -18,6 +18,25 @@
               persistent-hint
               rows="4"
             ></v-textarea>
+            <div v-if="childRecipes && childRecipes.length > 0">
+              <v-subheader>{{ $tc('recipe.sub-recipes') }}</v-subheader>
+              <v-list dense>
+                <v-list-item
+                  v-for="(childRecipe, i) in childRecipes"
+                  :key="childRecipe.recipeId + i"
+                  dense
+                  @click="childRecipe.checked = !childRecipe.checked"
+                >
+                  <v-checkbox
+                    hide-details
+                    :input-value="childRecipe.checked"
+                    :label="childRecipe.name"
+                    class="pt-0 my-auto py-auto"
+                    color="secondary"
+                  />
+                  </v-list-item>
+                  </v-list>
+                  </div>
             <v-container>
               <v-row>
                 <v-col cols="auto">
@@ -96,7 +115,12 @@
           <v-icon left>
             {{ $globals.icons.calendar }}
           </v-icon>
-            {{ $t('recipe.last-made-date', { date: value ? new Date(value).toLocaleDateString($i18n.locale) : $t("general.never") } ) }}
+            <div v-if="lastMadeReady">
+              {{ $t('recipe.last-made-date', { date: lastMade ? new Date(lastMade).toLocaleDateString($i18n.locale) : $t("general.never") } ) }}
+            </div>
+            <div v-else>
+              <AppLoader tiny />
+            </div>
         </v-chip>
       </div>
       <div class="d-flex justify-center flex-wrap mt-1">
@@ -110,7 +134,7 @@
 </template>
 
 <script lang="ts">
-import { computed, defineComponent, reactive, ref, toRefs, useContext } from "@nuxtjs/composition-api";
+import { computed, defineComponent, onMounted, reactive, ref, toRefs, useContext } from "@nuxtjs/composition-api";
 import { whenever } from "@vueuse/core";
 import { VForm } from "~/types/vuetify";
 import { useUserApi } from "~/composables/api";
@@ -119,10 +143,6 @@ import { Recipe, RecipeTimelineEventIn } from "~/lib/api/types/recipe";
 
 export default defineComponent({
   props: {
-    value: {
-      type: String,
-      default: null,
-    },
     recipe: {
       type: Object as () => Recipe,
       required: true,
@@ -145,6 +165,33 @@ export default defineComponent({
     const newTimelineEventImageName = ref<string>("");
     const newTimelineEventImagePreviewUrl = ref<string>();
     const newTimelineEventTimestamp = ref<string>();
+
+    const lastMade = ref(props.recipe.lastMade);
+    const lastMadeReady = ref(false);
+    onMounted(async () => {
+      if (!$auth.user?.householdSlug) {
+        lastMade.value = props.recipe.lastMade;
+      } else {
+        const { data } = await userApi.households.getCurrentUserHouseholdRecipe(props.recipe.slug || "");
+        lastMade.value = data?.lastMade;
+      }
+
+      lastMadeReady.value = true;
+    });
+
+    const childRecipes = computed(() => {
+      return props.recipe.recipeIngredient?.map((ingredient) => {
+        if (ingredient.referencedRecipe) {
+          return {
+            checked: false, // Default value for checked
+            recipeId: ingredient.referencedRecipe.id || "", // Non-nullable recipeId
+            ...ingredient.referencedRecipe // Spread the rest of the referencedRecipe properties
+          };
+        } else {
+          return undefined;
+        }
+      }).filter(recipe => recipe !== undefined); // Filter out undefined values
+    });
 
     whenever(
       () => madeThisDialog.value,
@@ -195,11 +242,9 @@ export default defineComponent({
       const newEvent = eventResponse.data;
 
       // we also update the recipe's last made value
-      if (!props.value || newTimelineEvent.value.timestamp > props.value) {
+      if (!lastMade.value || newTimelineEvent.value.timestamp > lastMade.value) {
+        lastMade.value = newTimelineEvent.value.timestamp;
         await userApi.recipes.updateLastMade(props.recipe.slug,  newTimelineEvent.value.timestamp);
-
-        // update recipe in parent so the user can see it
-        context.emit("input", newTimelineEvent.value.timestamp);
       }
 
       // update the image, if provided
@@ -212,6 +257,21 @@ export default defineComponent({
         if (imageResponse.data) {
           // @ts-ignore the image response data will always match a value of TimelineEventImage
           newEvent.image = imageResponse.data.image;
+        }
+      }
+
+      // Update last made for any checked child recipes
+      if (childRecipes.value) {
+        for (const childRecipe of childRecipes.value) {
+          if (childRecipe.checked) {
+            newTimelineEvent.value.eventMessage = "";
+            clearImage();
+            newTimelineEvent.value.recipeId = childRecipe.recipeId;
+            await userApi.recipes.createTimelineEvent(newTimelineEvent.value);
+            if ((!props.value || newTimelineEvent.value.timestamp > props.value) && childRecipe.slug) {
+              await userApi.recipes.updateLastMade(childRecipe.slug, newTimelineEvent.value.timestamp);
+            }
+          }
         }
       }
 
@@ -234,10 +294,13 @@ export default defineComponent({
       newTimelineEventImage,
       newTimelineEventImagePreviewUrl,
       newTimelineEventTimestamp,
+      lastMade,
+      lastMadeReady,
       createTimelineEvent,
       clearImage,
       uploadImage,
       updateUploadedImage,
+      childRecipes,
     };
   },
 });

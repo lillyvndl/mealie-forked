@@ -59,7 +59,17 @@ class RecipeCategoryPagination(PaginationBase):
 
 class RecipeTool(RecipeTag):
     id: UUID4
-    on_hand: bool = False
+    households_with_tool: list[str] = []
+
+    @field_validator("households_with_tool", mode="before")
+    def convert_households_to_slugs(cls, v):
+        if not v:
+            return []
+
+        try:
+            return [household.slug for household in v]
+        except AttributeError:
+            return v
 
 
 class RecipeToolPagination(PaginationBase):
@@ -322,7 +332,12 @@ class Recipe(RecipeSummary):
                 .all()
             )
 
-            session.execute(text(f"set pg_trgm.word_similarity_threshold = {cls._fuzzy_similarity_threshold};"))
+            session.execute(
+                text(
+                    f"set pg_trgm.word_similarity_threshold = {
+                        cls._fuzzy_similarity_threshold};"
+                )
+            )
             return query.filter(
                 or_(
                     RecipeModel.name_normalized.op("%>")(search),

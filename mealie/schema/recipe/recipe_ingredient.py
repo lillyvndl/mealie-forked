@@ -7,13 +7,14 @@ from typing import ClassVar
 from uuid import UUID, uuid4
 
 from pydantic import UUID4, ConfigDict, Field, field_validator, model_validator
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.orm.interfaces import LoaderOption
 
 from mealie.db.models.recipe import IngredientFoodModel
 from mealie.schema._mealie import MealieModel
 from mealie.schema._mealie.mealie_model import UpdatedAtField
 from mealie.schema._mealie.types import NoneFloat
+from mealie.schema.recipe.recipe import Recipe
 from mealie.schema.response.pagination import PaginationBase
 
 INGREDIENT_QTY_PRECISION = 3
@@ -37,7 +38,6 @@ class UnitFoodBase(MealieModel):
     plural_name: str | None = None
     description: str = ""
     extras: dict | None = {}
-    on_hand: bool = False
 
     @field_validator("id", mode="before")
     def convert_empty_id_to_none(cls, v):
@@ -67,6 +67,7 @@ class IngredientFoodAlias(CreateIngredientFoodAlias):
 class CreateIngredientFood(UnitFoodBase):
     label_id: UUID4 | None = None
     aliases: list[CreateIngredientFoodAlias] = []
+    households_with_ingredient_food: list[str] = []
 
 
 class SaveIngredientFood(CreateIngredientFood):
@@ -91,9 +92,23 @@ class IngredientFood(CreateIngredientFood):
     @classmethod
     def loader_options(cls) -> list[LoaderOption]:
         return [
+            selectinload(IngredientFoodModel.households_with_ingredient_food),
             joinedload(IngredientFoodModel.extras),
             joinedload(IngredientFoodModel.label),
         ]
+
+    @field_validator("households_with_ingredient_food", mode="before")
+    def convert_households_to_slugs(cls, v):
+        if not v:
+            return []
+
+        try:
+            return [household.slug for household in v]
+        except AttributeError:
+            return v
+
+    def is_on_hand(self, household_slug: str) -> bool:
+        return household_slug in self.households_with_tool
 
 
 class IngredientFoodPagination(PaginationBase):
@@ -141,9 +156,12 @@ class RecipeIngredientBase(MealieModel):
     quantity: NoneFloat = 1
     unit: IngredientUnit | CreateIngredientUnit | None = None
     food: IngredientFood | CreateIngredientFood | None = None
+    referenced_recipe: Recipe | None = None
+
     note: str | None = ""
 
     is_food: bool | None = None
+    is_recipe: bool | None = None
     disable_amount: bool | None = None
     display: str = ""
     """
@@ -163,6 +181,22 @@ class RecipeIngredientBase(MealieModel):
         elif self.is_food is None and self.disable_amount is None:
             self.is_food = bool(self.food)
             self.disable_amount = not self.is_food
+
+        return self
+
+    @model_validator(mode="after")
+    def calculate_missing_recipe_flags(self):
+        # calculate missing is_recipe
+        # we can't do this in a validator since they depend on each other
+        if self.is_recipe is None:
+            self.is_recipe = bool(self.referenced_recipe)
+
+        return self
+
+    @model_validator(mode="after")
+    def change_note_templates(self):
+        if self.referenced_recipe:
+            self.note = self.referenced_recipe.name
 
         return self
 

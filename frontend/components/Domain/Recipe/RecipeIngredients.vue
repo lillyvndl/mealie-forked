@@ -10,12 +10,15 @@
           <h3 v-if="showTitleEditor[index]" class="mt-2">{{ ingredient.title }}</h3>
           <v-divider v-if="showTitleEditor[index]"></v-divider>
         </template>
-        <v-list-item dense @click.stop="toggleChecked(index)">
-          <v-checkbox hide-details :value="checked[index]" class="pt-0 my-auto py-auto" color="secondary" />
-          <v-list-item-content :key="ingredient.quantity">
-            <RecipeIngredientListItem :ingredient="ingredient" :disable-amount="disableAmount" :scale="scale" />
-          </v-list-item-content>
-        </v-list-item>
+
+              <v-list-item dense @click.stop="toggleChecked(index)">
+                <v-checkbox hide-details :value="checked[index]" class="pt-0 my-auto py-auto" color="secondary" />
+                <v-list-item-content :key="ingredient.quantity">
+                  <RecipeIngredientListItem :ingredient="ingredient" :disable-amount="disableAmount" :scale="scale" />
+                </v-list-item-content>
+              </v-list-item>
+
+
       </div>
     </div>
   </div>
